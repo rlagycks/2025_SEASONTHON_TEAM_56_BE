@@ -1,14 +1,21 @@
-# .github/workflows/deploy.yml
 name: Deploy to EC2 (on merge develop -> main)
 
 on:
   pull_request:
-    types: [closed]         # PR이 닫힐 때만 트리거 (머지/닫기 모두)
-    branches: [main]        # base(타깃) 브랜치가 main인 PR에 한함
+    types: [closed]         # PR이 닫힐 때 트리거 (머지 포함)
+    branches: [main]        # base=main 인 PR만
+
+permissions:
+  id-token: write           # ← OIDC 필수
+  contents: read
+
+env:
+  APP_DIR: /home/${{ secrets.EC2_USER }}/app
+  JAR_NAME: app.jar
 
 jobs:
   deploy:
-    # 1) PR이 '머지' 되었고, 2) base=main, 3) head=develop, 4) 내 포크 레포 에서만
+    # 포크 레포 소유자일 때 + develop -> main 으로 '머지'된 경우만
     if: >
       github.event.pull_request.merged == true &&
       github.event.pull_request.base.ref == 'main' &&
@@ -28,17 +35,20 @@ jobs:
           java-version: '17'
           cache: gradle
 
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
       - name: Build jar (skip tests)
         run: ./gradlew clean bootJar -x test
 
-      # --- OIDC로 AWS 권한 얻기 (이미 Role/Provider/Secrets 준비됨) ---
+      # --- OIDC로 AWS 임시 크레덴셜 획득 ---
       - name: Configure AWS creds (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region:     ${{ secrets.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}   # 예: arn:aws:iam::123456789012:role/manil_oidc
+          aws-region:     ${{ secrets.AWS_REGION }}     # 예: ap-northeast-2
 
-      # --- 러너 공인 IP를 SG에 임시 허용(22/tcp) ---
+      # --- 러너 IP를 22/tcp에 임시 허용 ---
       - name: Open SSH on SG to runner IP
         id: open_sg
         run: |
@@ -48,6 +58,7 @@ jobs:
             --group-id ${{ secrets.AWS_SG_ID }} \
             --ip-permissions IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges="[{CidrIp=$IP,Description='gh-runner'}]" || true
 
+      # --- SSH 키 작성 (EC2로 scp/ssh) ---
       - name: Write SSH key
         run: |
           printf '%s' "${{ secrets.EC2_SSH_KEY }}" > key.pem
@@ -56,13 +67,14 @@ jobs:
       - name: Ensure app dir on EC2
         run: |
           ssh -i key.pem -o StrictHostKeyChecking=no \
-            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "mkdir -p /home/${{ secrets.EC2_USER }}/app"
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "\
+              mkdir -p ${APP_DIR} && ls -al ${APP_DIR}"
 
       - name: Upload jar
         run: |
           scp -i key.pem -o StrictHostKeyChecking=no \
             build/libs/*.jar \
-            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/${{ secrets.EC2_USER }}/app/app.jar
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ env.APP_DIR }}/${{ env.JAR_NAME }}
 
       - name: Restart service
         run: |
