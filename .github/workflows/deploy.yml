@@ -68,10 +68,14 @@ jobs:
             --ip-permissions IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges="[{CidrIp=$IP,Description='gh-runner'}]" || true
 
       # --- SSH 키 작성 (EC2로 scp/ssh) ---
-      - name: Write SSH key
+      - name: Write SSH key (from base64)
         run: |
-          printf '%s' "${{ secrets.EC2_SSH_KEY }}" > key.pem
+          echo "${{ secrets.EC2_SSH_KEY_B64 }}" | base64 -d > key.pem
+          # 혹시 CRLF 섞였으면 제거
+          tr -d '\r' < key.pem > key.clean && mv key.clean key.pem
           chmod 600 key.pem
+          # 형식 검증(내용 출력 안 함)
+          ssh-keygen -lf key.pem >/dev/null
 
       - name: Ensure app dir on EC2
         run: |
