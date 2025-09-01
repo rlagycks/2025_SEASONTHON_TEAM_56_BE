@@ -4,18 +4,34 @@ on:
   push:
     branches: [ "main" ]
 
-env:
-  APP_DIR: /home/${{ secrets.EC2_USER }}/app
-  JAR_NAME: app.jar
+# OIDC로 AWS에 접근하려면 필수
+permissions:
+  id-token: write
+  contents: read
+
+# (중요) 만약 GitHub "Environments"에서 aws 라는 환경을 만들고
+# 그 안에 환경 전용 시크릿/변수를 저장했다면 아래 줄을 유지하세요.
+# Environments를 쓰지 않았다면 이 줄을 지워도 됩니다.
+# environment: aws  <- 이렇게 job 아래에서 지정 (아래에서 설정)
 
 jobs:
   deploy:
-    # Org 레포에서 오작동/오배포 방지: 포크 소유자일 때만 실행
-    if: github.repository_owner == 'rlagycks'
+    if: github.repository_owner == 'rlagycks'   # 포크에서 오작동 방지
     runs-on: ubuntu-latest
     concurrency:
       group: manil-deploy
       cancel-in-progress: true
+
+    # Environments를 썼다면 활성화
+    environment: aws
+
+    env:
+      APP_DIR: /home/${{ secrets.EC2_USER }}/app
+      JAR_NAME: app.jar
+      # secrets에 없으면 vars로 폴백 (둘 중 어디에 넣었는지 상관없이 동작)
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN || vars.AWS_ROLE_ARN }}
+      AWS_REGION: ${{ secrets.AWS_REGION || vars.AWS_REGION }}
+      SG_ID: ${{ secrets.AWS_SG_ID || vars.AWS_SG_ID }}
 
     steps:
       - uses: actions/checkout@v4
@@ -29,22 +45,47 @@ jobs:
       - name: Build jar (skip tests)
         run: ./gradlew clean bootJar -x test
 
+      # === OIDC로 AWS 인증 (Access Key 불필요) ===
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # (선택) 러너 공인 IP 확인 (디버그용)
+      - name: Show runner public IP
+        run: curl -s https://checkip.amazonaws.com || true
+
+      # === 보안그룹에 SSH(22) 임시 오픈 ===
+      - name: Open SG for runner (port 22)
+        if: env.SG_ID != ''
+        run: |
+          RUNNER_IP="$(curl -s https://checkip.amazonaws.com)/32"
+          echo "Allowing ${RUNNER_IP} on SG ${SG_ID}"
+          aws ec2 authorize-security-group-ingress \
+            --group-id "${SG_ID}" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${RUNNER_IP},Description=gh-runner}]"
+
+      # === SSH 키 작성 ===
       - name: Write SSH key
         run: |
           printf '%s' "${{ secrets.EC2_SSH_KEY }}" > key.pem
           chmod 600 key.pem
 
+      # === 서버에 app 디렉토리 보장 ===
       - name: Ensure app dir on EC2
         run: |
           ssh -i key.pem -o StrictHostKeyChecking=no \
             ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "\
               mkdir -p ${APP_DIR}"
 
+      # === JAR 업로드 ===
       - name: Upload jar
         run: |
           scp -i key.pem -o StrictHostKeyChecking=no \
             build/libs/*.jar ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ env.APP_DIR }}/${{ env.JAR_NAME }}
 
+      # === systemd 서비스 재시작 ===
       - name: Restart service
         run: |
           ssh -i key.pem -o StrictHostKeyChecking=no \
@@ -52,9 +93,20 @@ jobs:
               sudo systemctl restart manil && \
               sleep 3 && systemctl is-active manil"
 
-      # (선택) 서버 안에서 헬스 체크
-      - name: Health check on EC2
+      # (선택) 헬스 체크 + 실패 시 최근 로그 보기
+      - name: Health check
         run: |
           ssh -i key.pem -o StrictHostKeyChecking=no \
             ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "\
               curl -fsS http://localhost:8080/actuator/health || (journalctl -u manil -n 100 --no-pager; exit 1)"
+
+      # === 보안그룹에서 러너 IP 해제 (항상 실행) ===
+      - name: Close SG for runner (port 22)
+        if: always() && env.SG_ID != ''
+        run: |
+          RUNNER_IP="$(curl -s https://checkip.amazonaws.com)/32"
+          echo "Revoking ${RUNNER_IP} from SG ${SG_ID}"
+          # 중복 규칙 제거 시 에러 방지용 || true
+          aws ec2 revoke-security-group-ingress \
+            --group-id "${SG_ID}" \
+            --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${RUNNER_IP}}]" || true
