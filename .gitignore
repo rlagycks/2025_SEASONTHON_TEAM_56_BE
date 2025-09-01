@@ -37,5 +37,5 @@ logs/
 *.tmp
 *.swp
 
-application-prod.yml
-application-dev.yml
+src/main/resources/application-dev.yml
+src/main/resources/application-prod.yml
