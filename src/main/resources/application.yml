@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: manil
+
+  jpa:
+    hibernate:
+      ddl-auto: update         # ??? ? ??, ??? validate ??
+    properties:
+      hibernate:
+        default_schema: app
+        format_sql: true
+    show-sql: false
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info"
+  endpoint:
+    health:
+      show-details: never

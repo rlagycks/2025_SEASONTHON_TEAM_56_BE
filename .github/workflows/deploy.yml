@@ -1,0 +1,86 @@
+# .github/workflows/deploy.yml
+name: Deploy to EC2 (on merge develop -> main)
+
+on:
+  pull_request:
+    types: [closed]         # PR이 닫힐 때만 트리거 (머지/닫기 모두)
+    branches: [main]        # base(타깃) 브랜치가 main인 PR에 한함
+
+jobs:
+  deploy:
+    # 1) PR이 '머지' 되었고, 2) base=main, 3) head=develop, 4) 내 포크 레포 에서만
+    if: >
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.head.ref == 'develop' &&
+      github.repository_owner == 'rlagycks'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: manil-deploy
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Build jar (skip tests)
+        run: ./gradlew clean bootJar -x test
+
+      # --- OIDC로 AWS 권한 얻기 (이미 Role/Provider/Secrets 준비됨) ---
+      - name: Configure AWS creds (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region:     ${{ secrets.AWS_REGION }}
+
+      # --- 러너 공인 IP를 SG에 임시 허용(22/tcp) ---
+      - name: Open SSH on SG to runner IP
+        id: open_sg
+        run: |
+          IP=$(curl -s https://checkip.amazonaws.com)/32
+          echo "runner_ip=$IP" >> $GITHUB_OUTPUT
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${{ secrets.AWS_SG_ID }} \
+            --ip-permissions IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges="[{CidrIp=$IP,Description='gh-runner'}]" || true
+
+      - name: Write SSH key
+        run: |
+          printf '%s' "${{ secrets.EC2_SSH_KEY }}" > key.pem
+          chmod 600 key.pem
+
+      - name: Ensure app dir on EC2
+        run: |
+          ssh -i key.pem -o StrictHostKeyChecking=no \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "mkdir -p /home/${{ secrets.EC2_USER }}/app"
+
+      - name: Upload jar
+        run: |
+          scp -i key.pem -o StrictHostKeyChecking=no \
+            build/libs/*.jar \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/home/${{ secrets.EC2_USER }}/app/app.jar
+
+      - name: Restart service
+        run: |
+          ssh -i key.pem -o StrictHostKeyChecking=no \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "\
+              sudo systemctl restart manil && \
+              sleep 3 && systemctl is-active manil"
+
+      - name: Health check on EC2
+        run: |
+          ssh -i key.pem -o StrictHostKeyChecking=no \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "\
+              curl -fsS http://localhost:8080/actuator/health || (journalctl -u manil -n 100 --no-pager; exit 1)"
+
+      # --- 항상 SG 규칙 원복 ---
+      - name: Close SSH on SG
+        if: always()
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id ${{ secrets.AWS_SG_ID }} \
+            --ip-permissions IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges="[{CidrIp=${{ steps.open_sg.outputs.runner_ip }},Description='gh-runner'}]" || true
