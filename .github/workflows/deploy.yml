@@ -2,11 +2,11 @@ name: Deploy to EC2 (on merge develop -> main)
 
 on:
   pull_request:
-    types: [closed]         # PR이 닫힐 때 트리거 (머지 포함)
-    branches: [main]        # base=main 인 PR만
+    types: [closed]          # PR이 닫힐 때(머지 포함) 트리거
+    branches: [main]         # base=main 인 PR만
 
 permissions:
-  id-token: write           # ← OIDC 필수
+  id-token: write            # OIDC 필수
   contents: read
 
 env:
@@ -15,7 +15,7 @@ env:
 
 jobs:
   deploy:
-    # 포크 레포 소유자일 때 + develop -> main 으로 '머지'된 경우만
+    # PR이 '머지' 되었고, base=main, head=develop, 내 포크 레포일 때만 실행
     if: >
       github.event.pull_request.merged == true &&
       github.event.pull_request.base.ref == 'main' &&
@@ -41,12 +41,21 @@ jobs:
       - name: Build jar (skip tests)
         run: ./gradlew clean bootJar -x test
 
+      - name: Check built jar
+        run: ls -al build/libs
+
       # --- OIDC로 AWS 임시 크레덴셜 획득 ---
       - name: Configure AWS creds (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}   # 예: arn:aws:iam::123456789012:role/manil_oidc
           aws-region:     ${{ secrets.AWS_REGION }}     # 예: ap-northeast-2
+
+      - name: Who am I (debug)
+        run: |
+          aws --version
+          aws sts get-caller-identity
+          aws ec2 describe-security-groups --group-ids ${{ secrets.AWS_SG_ID }} --query 'SecurityGroups[0].GroupName'
 
       # --- 러너 IP를 22/tcp에 임시 허용 ---
       - name: Open SSH on SG to runner IP
@@ -68,7 +77,8 @@ jobs:
         run: |
           ssh -i key.pem -o StrictHostKeyChecking=no \
             ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "\
-              mkdir -p ${APP_DIR} && ls -al ${APP_DIR}"
+              mkdir -p /home/${{ secrets.EC2_USER }}/app && \
+              ls -al /home/${{ secrets.EC2_USER }}/app"
 
       - name: Upload jar
         run: |
