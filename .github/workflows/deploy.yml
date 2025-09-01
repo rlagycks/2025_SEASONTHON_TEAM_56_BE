@@ -2,11 +2,11 @@ name: Deploy to EC2 (on merge develop -> main)
 
 on:
   pull_request:
-    types: [closed]          # PR이 닫힐 때(머지 포함) 트리거
-    branches: [main]         # base=main 인 PR만
+    types: [closed]
+    branches: [main]
 
 permissions:
-  id-token: write            # OIDC 필수
+  id-token: write
   contents: read
 
 env:
@@ -15,7 +15,6 @@ env:
 
 jobs:
   deploy:
-    # PR이 '머지' 되었고, base=main, head=develop, 내 포크 레포일 때만 실행
     if: >
       github.event.pull_request.merged == true &&
       github.event.pull_request.base.ref == 'main' &&
@@ -44,12 +43,11 @@ jobs:
       - name: Check built jar
         run: ls -al build/libs
 
-      # --- OIDC로 AWS 임시 크레덴셜 획득 ---
       - name: Configure AWS creds (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}   # 예: arn:aws:iam::123456789012:role/manil_oidc
-          aws-region:     ${{ secrets.AWS_REGION }}     # 예: ap-northeast-2
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region:     ${{ secrets.AWS_REGION }}
 
       - name: Who am I (debug)
         run: |
@@ -57,7 +55,6 @@ jobs:
           aws sts get-caller-identity
           aws ec2 describe-security-groups --group-ids ${{ secrets.AWS_SG_ID }} --query 'SecurityGroups[0].GroupName'
 
-      # --- 러너 IP를 22/tcp에 임시 허용 ---
       - name: Open SSH on SG to runner IP
         id: open_sg
         run: |
@@ -67,22 +64,18 @@ jobs:
             --group-id ${{ secrets.AWS_SG_ID }} \
             --ip-permissions IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges="[{CidrIp=$IP,Description='gh-runner'}]" || true
 
-      # --- SSH 키 작성 (EC2로 scp/ssh) ---
       - name: Write SSH key (from base64)
         run: |
           echo "${{ secrets.EC2_SSH_KEY_B64 }}" | base64 -d > key.pem
-          # 혹시 CRLF 섞였으면 제거
           tr -d '\r' < key.pem > key.clean && mv key.clean key.pem
           chmod 600 key.pem
-          # 형식 검증(내용 출력 안 함)
           ssh-keygen -lf key.pem >/dev/null
 
       - name: Ensure app dir on EC2
         run: |
           ssh -i key.pem -o StrictHostKeyChecking=no \
             ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "\
-              mkdir -p /home/${{ secrets.EC2_USER }}/app && \
-              ls -al /home/${{ secrets.EC2_USER }}/app"
+              mkdir -p ${APP_DIR} && ls -al ${APP_DIR}"
 
       - name: Upload jar
         run: |
@@ -95,15 +88,28 @@ jobs:
           ssh -i key.pem -o StrictHostKeyChecking=no \
             ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "\
               sudo systemctl restart manil && \
-              sleep 3 && systemctl is-active manil"
+              sleep 2 && systemctl is-active manil"
 
-      - name: Health check on EC2
+      # ✅ heredoc은 ssh 명령 '밖'에서 붙인다
+      - name: Wait & Health check on EC2 (retry)
         run: |
-          ssh -i key.pem -o StrictHostKeyChecking=no \
-            ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "\
-              curl -fsS http://localhost:8080/actuator/health || (journalctl -u manil -n 100 --no-pager; exit 1)"
+          ssh -i key.pem -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          echo "[INFO] waiting for app to become healthy..."
+          for i in {1..40}; do
+            if curl -fsS http://localhost:8080/actuator/health >/dev/null; then
+              echo "[INFO] health is UP"
+              exit 0
+            fi
+            systemctl is-active manil || true
+            journalctl -u manil -n 10 --no-pager || true
+            sleep 3
+          done
+          echo "[ERROR] health check timeout"
+          journalctl -u manil -n 200 --no-pager || true
+          exit 1
+          REMOTE
 
-      # --- 항상 SG 규칙 원복 ---
       - name: Close SSH on SG
         if: always()
         run: |
