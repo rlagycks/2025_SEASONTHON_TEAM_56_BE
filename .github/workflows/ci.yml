@@ -21,3 +21,14 @@ jobs:
       # 테스트가 DB 등 외부에 의존할 수 있으니 해커톤에선 일단 테스트 스킵
       - name: Build (skip tests)
         run: ./gradlew clean build -x test
+
+      - name: Show repo tree
+        run: |
+          pwd
+          ls -la
+          echo "---- src tree ----"
+          ls -laR src || true
+          echo "---- build.gradle ----"
+          sed -n '1,120p' build.gradle || true
+          echo "---- settings.gradle ----"
+          sed -n '1,120p' settings.gradle || true
