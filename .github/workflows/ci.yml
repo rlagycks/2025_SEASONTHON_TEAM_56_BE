@@ -1,0 +1,23 @@
+name: CI (build only)
+
+on:
+  push:
+    branches: [ "develop", "main" ]
+  pull_request:
+    branches: [ "develop", "main" ]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      # 테스트가 DB 등 외부에 의존할 수 있으니 해커톤에선 일단 테스트 스킵
+      - name: Build (skip tests)
+        run: ./gradlew clean build -x test
