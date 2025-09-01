@@ -11,7 +11,7 @@ env:
 jobs:
   deploy:
     # Org 레포에서 오작동/오배포 방지: 포크 소유자일 때만 실행
-    if: github.repository_owner == 'YOUR_GITHUB_USERNAME'
+    if: github.repository_owner == 'rlagycks'
     runs-on: ubuntu-latest
     concurrency:
       group: manil-deploy
