@@ -36,3 +36,6 @@ logs/
 *.log
 *.tmp
 *.swp
+
+application-prod.yml
+application-dev.yml
