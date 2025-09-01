@@ -1,0 +1,50 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.5'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.manil'
+version = '0.0.1-SNAPSHOT'
+description = 'Manil'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17) // JDK 17 고정
+    }
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // === 필수(REST API + 검증) ===
+    implementation 'org.springframework.boot:spring-boot-starter-web'          // MVC(Tomcat)
+    implementation 'org.springframework.boot:spring-boot-starter-validation'   // Bean Validation
+
+    // === DB/RDS(PostgreSQL) ===
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.postgresql:postgresql'
+
+    // === 관측/헬스체크 ===
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // === 외부 API 호출(Gemini)용 WebClient ===
+    // 서버는 MVC 그대로, WebClient만 사용하기 위해 webflux 스타터 추가
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+    // === 테스트 ===
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
