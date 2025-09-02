@@ -40,6 +40,10 @@ dependencies {
     // 서버는 MVC 그대로, WebClient만 사용하기 위해 webflux 스타터 추가
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
 
+    // === 편의성 ===
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
     // === 테스트 ===
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
