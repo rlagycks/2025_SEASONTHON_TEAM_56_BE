@@ -1,39 +1,35 @@
 package com.manil.manil.controller;
 
-import com.manil.manil.dto.ProductDescriptionRequest;
-import com.manil.manil.dto.ProductDescriptionResponse;
+import com.manil.manil.dto.ProductAnalyzeRequest;
+import com.manil.manil.dto.ProductAnalyzeResponse;
+import com.manil.manil.global.payload.ResponseDto;
 import com.manil.manil.service.GeminiProductService;
 import jakarta.validation.Valid;
-import org.springframework.http.ResponseEntity;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
+@RequiredArgsConstructor
 @RequestMapping("/api/products")
 public class ProductDescriptionController {
 
     private final GeminiProductService geminiProductService;
 
-    public ProductDescriptionController(GeminiProductService geminiProductService) {
-        this.geminiProductService = geminiProductService;
-    }
-
     /**
-     * 예: POST /api/products/123/describe
-     * body:
-     * {
-     *   "oneLine": "선물용 500ml 스테인리스 텀블러, 보온/보냉",
-     *   "locale": "ko",
-     *   "tone": "친절",
-     *   "keywords": "선물, 스테인리스, 밀폐 뚜껑"
-     * }
+     * POST /api/products/analyze
+     * - 입력: name, simple_description, keywords(0~5), category, price, images(0~5)
+     * - 처리: 이미지 제외, 나머지 필드만 프롬프트에 반영하여 상세설명 생성
+     * - 반환: ResponseDto<{ detailed_description, analyze_id }>
      */
-    @PostMapping("/{productId}/describe")
-    public ResponseEntity<ProductDescriptionResponse> describe(
-            @PathVariable String productId,
-            @Valid @RequestBody ProductDescriptionRequest request
-    ) {
-        // productId는 로깅/추후 프롬프트 보강용으로 활용 가능
-        ProductDescriptionResponse res = geminiProductService.generate(request);
-        return ResponseEntity.ok(res);
+    @PostMapping(
+            path = "/analyze",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public ResponseDto<ProductAnalyzeResponse> analyze(@Valid @RequestBody ProductAnalyzeRequest request) {
+        ProductAnalyzeResponse res = geminiProductService.generateDetailedDescription(request);
+        // 판매자 수정 기능은 프론트에서 res.detailed_description을 편집하여 /products 저장 시 사용
+        return ResponseDto.of(res);
     }
 }
