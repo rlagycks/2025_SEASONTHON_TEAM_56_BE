@@ -12,6 +12,7 @@ permissions:
 env:
   APP_DIR: /home/${{ secrets.EC2_USER }}/app
   JAR_NAME: app.jar
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
 jobs:
   deploy:
@@ -90,7 +91,7 @@ jobs:
               sudo systemctl restart manil && \
               sleep 2 && systemctl is-active manil"
 
-      # ✅ heredoc은 ssh 명령 '밖'에서 붙인다
+      #  heredoc은 ssh 명령 '밖'에서 붙인다
       - name: Wait & Health check on EC2 (retry)
         run: |
           ssh -i key.pem -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} 'bash -se' <<'REMOTE'

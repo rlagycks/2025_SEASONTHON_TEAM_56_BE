@@ -25,22 +25,24 @@ repositories {
 }
 
 dependencies {
-    // === 필수(REST API + 검증) ===
-    implementation 'org.springframework.boot:spring-boot-starter-web'          // MVC(Tomcat)
-    implementation 'org.springframework.boot:spring-boot-starter-validation'   // Bean Validation
-
-    // === DB/RDS(PostgreSQL) ===
+    // Spring
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.postgresql:postgresql'
-
-    // === 관측/헬스체크 ===
+    implementation 'com.pgvector:pgvector:0.1.4'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
-    // === 외부 API 호출(Gemini)용 WebClient ===
-    // 서버는 MVC 그대로, WebClient만 사용하기 위해 webflux 스타터 추가
-    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    // Google GenAI
+    implementation 'com.google.genai:google-genai:1.15.0'
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
 
-    // === 테스트 ===
+    // Lombok & config processor
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    annotationProcessor "org.springframework.boot:spring-boot-configuration-processor"
+
+    // Test
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }

@@ -2,23 +2,46 @@ spring:
   application:
     name: manil
 
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      connectionInitSql: "SET search_path TO app, public"
+
   jpa:
+    show-sql: false
     hibernate:
-      ddl-auto: update         # ??? ? ??, ??? validate ??
+      ddl-auto: none
     properties:
       hibernate:
         default_schema: app
         format_sql: true
-    show-sql: false
+        jdbc.time_zone: UTC
 
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 management:
   endpoints:
-    web:
-      exposure:
-        include: "health,info"
+    web.exposure.include: "health,info"
   endpoint:
-    health:
-      show-details: never
+    health.show-details: never
+
+manil:
+  gemini:
+    api-key: ${GEMINI_API_KEY}     # 반드시 ENV로 주입
+    base-url: https://generativelanguage.googleapis.com
+    embed-model: text-embedding-004
+    generate-model: gemini-embedding-001
+    dim: 768
+    connect-timeout-ms: 3000
+    read-timeout-ms: 8000
+
+logging:
+  level:
+    root: INFO
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN
+
