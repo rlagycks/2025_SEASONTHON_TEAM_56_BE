@@ -6,4 +6,4 @@ import lombok.Builder;
 @Builder
 public record ProductCreatedResponse(
         @JsonProperty("product_id") Long productId
-) { }
+) {}
