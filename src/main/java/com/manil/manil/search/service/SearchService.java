@@ -1,4 +1,4 @@
-// com.manil.manil.search.service.SearchService.java
+// src/main/java/com/manil/manil/search/service/SearchService.java
 package com.manil.manil.search.service;
 
 import com.manil.manil.gemini.client.EmbeddingClient;
@@ -7,11 +7,8 @@ import com.manil.manil.product.entity.ProductImage;
 import com.manil.manil.product.repository.KeywordRepository;
 import com.manil.manil.product.repository.ProductImageRepository;
 import com.manil.manil.search.dto.SearchResponse;
-import com.manil.manil.search.filter.HardFilter;
-import com.manil.manil.search.filter.HardFilterParser;
 import com.manil.manil.search.repository.SearchRepository;
 import com.manil.manil.search.repository.SearchRow;
-import com.pgvector.PGvector;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -28,35 +25,35 @@ public class SearchService {
     private final KeywordRepository keywordRepository;
     private final ProductImageRepository productImageRepository;
 
-    @Value("${manil.search.top-k:3}")
-    private int topK;
+    // yml에서 분리된 설정 사용
+    @Value("${manil.search.repo-top-k:80}")
+    private int repoTopK;
+
+    @Value("${manil.search.response-top-k:3}")
+    private int responseTopK;
 
     @Value("${manil.search.keyword-boost:0.02}")
     private double keywordBoost;
 
     public SearchResponse search(String query, String keywordsCsv) {
-        // 1) 하드 필터 파싱
-        final HardFilter hf = HardFilterParser.parse(query);
-
-        // 2) 쿼리 임베딩
+        // 1) 쿼리 임베딩
         final float[] qvec = embeddingClient.embed(query);
         final String qVecText = new com.pgvector.PGvector(qvec).toString();
 
-        // 3) 벡터 검색 (TOP-K)
-        final List<SearchRow> rows = searchRepository.searchTopK(
-                qVecText,                  // ← 문자열 파라미터
-                hf.category(),
-                hf.minPrice(),
-                hf.maxPrice(),
-                topK,
+        // 2) DB에서 넓게 후보 수집 (하드필터 null로 비활성화)
+        final var rows = searchRepository.searchTopK(
+                qVecText,
+                null,   // category
+                null,   // minPrice
+                null,   // maxPrice
+                repoTopK,
                 0
         );
 
-        // 4) 키워드 부스트 준비
-        final Set<String> reqKeywords = parseKeywordsCsv(keywordsCsv); // 소문자+trim+중복제거
+        // 3) 키워드 부스트 준비
+        final Set<String> reqKeywords = parseKeywordsCsv(keywordsCsv);
         final List<Long> ids = rows.stream().map(SearchRow::getId).toList();
 
-        // 🔧 재할당 없이 한 번에 초기화해서 final로 유지
         final Map<Long, List<String>> productKeywords =
                 (!ids.isEmpty() && !reqKeywords.isEmpty())
                         ? keywordRepository.findByProductIdIn(ids).stream()
@@ -66,12 +63,22 @@ public class SearchService {
                         ))
                         : Map.of();
 
+        // 4) 매핑 + 소프트 스코어(키워드 부스트) + 메인 이미지
         final List<SearchResponse.ProductHit> hits = rows.stream()
                 .map(r -> {
                     double sim = r.getSimilarity() == null ? 0.0 : r.getSimilarity();
 
+                    if (!reqKeywords.isEmpty()) {
+                        long matches = productKeywords.getOrDefault(r.getId(), List.of()).stream()
+                                .filter(Objects::nonNull)
+                                .map(String::toLowerCase)
+                                .filter(reqKeywords::contains)
+                                .count();
+                        sim += matches * keywordBoost; // 가산점 반영
+                    }
+
                     String mainUrl = productImageRepository
-                            .findTopByProductIdOrderByMainDescSortOrderAscIdAsc(r.getId())
+                            .findTopByProduct_IdOrderByMainDescSortOrderAscIdAsc(r.getId())
                             .map(ProductImage::getUrl)
                             .orElse(null);
 
@@ -82,13 +89,14 @@ public class SearchService {
                             .price(r.getPrice())
                             .category(r.getCategory())
                             .similarity(sim)
-                            .mainImageUrl(mainUrl) // ← 추가
+                            .mainImageUrl(mainUrl)
                             .build();
                 })
                 .sorted(Comparator.comparing(
                         SearchResponse.ProductHit::similarity,
                         Comparator.nullsLast(Comparator.reverseOrder())
                 ))
+                .limit(responseTopK)  // 최종 응답 수 제한
                 .toList();
 
         return SearchResponse.builder().products(hits).build();

@@ -2,7 +2,7 @@ package com.manil.manil.product.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.springframework.data.annotation.Id;
+import jakarta.persistence.Id;
 
 // com.manil.manil.product.domain.AbstractTag.java
 @Entity

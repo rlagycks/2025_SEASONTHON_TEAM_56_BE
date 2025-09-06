@@ -53,6 +53,10 @@ manil:
     dim: 768
     connect-timeout-ms: 3000
     read-timeout-ms: 8000
+  search:
+    repo-top-k: 80
+    response-top-k: 3
+    keyword-boost: 0.02
 
 logging:
   level:
