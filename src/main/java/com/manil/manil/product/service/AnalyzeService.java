@@ -1,4 +1,3 @@
-// src/main/java/com/manil/manil/product/service/AnalyzeService.java
 package com.manil.manil.product.service;
 
 import com.manil.manil.gemini.client.EmbeddingClient;
@@ -96,7 +95,7 @@ public class AnalyzeService {
                     .expiresAt(OffsetDateTime.now().plusHours(cacheTtlHours))
                     .build();
 
-            // ★ PGvector 문자열 세팅
+            // ★ PGvector 문자열 세팅 (DB write 시 ::vector)
             entity.setEmbeddingFromArray(descVec);
 
             try {
