@@ -15,7 +15,6 @@ import java.net.URI;
 import java.net.URL;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 @RequiredArgsConstructor
@@ -71,7 +70,9 @@ public class ImageStorageService {
         return sb.toString();
     }
 
-    // ---------- 분석 단계: 0번만 캐시에 저장 ----------
+    // =========================================
+    // 1) 분석 단계: 첫 이미지(0번)만 캐시에 저장
+    // =========================================
     public void saveAnalyzeMainFromMultipart(List<MultipartFile> images, String analyzeId) throws IOException {
         if (images == null || images.isEmpty()) return;
         MultipartFile main = images.get(0);
@@ -89,6 +90,7 @@ public class ImageStorageService {
         }
     }
 
+    // (선택) JSON 분석 플로우에서 외부 URL을 0번으로 저장할 때 사용
     public void saveAnalyzeMainFromUrl(List<String> urls, String analyzeId) throws IOException {
         if (urls == null || urls.isEmpty()) return;
         String first = urls.get(0);
@@ -103,62 +105,105 @@ public class ImageStorageService {
         download(first, path);
     }
 
-    // ---------- 등록 단계: 전체를 정식 경로로 ----------
-    public List<String> finalizeProductImages(Long productId, String analyzeId, List<String> imageUrls, int startIndex) throws IOException {
+    public List<String> finalizeProductImagesFromMultipart(
+            Long productId,
+            String analyzeId,
+            List<MultipartFile> images,
+            Integer mainIndex
+    ) throws IOException {
+
         Path productDir = Path.of(props.getRootDir(), "products", String.valueOf(productId));
         ensureDir(productDir);
 
-        List<String> finalUrls = new ArrayList<>();
-        AtomicInteger idx = new AtomicInteger(startIndex);
-
-        // 1) analyzeId의 main.* → 0번으로 이동
+        // --- 캐시 main(있으면) 찾기 ---
+        Path cacheMain = null;
         if (analyzeId != null && !analyzeId.isBlank()) {
             Path cacheDir = Path.of(props.getRootDir(), "cache", analyzeId);
             if (Files.exists(cacheDir)) {
                 try (DirectoryStream<Path> ds = Files.newDirectoryStream(cacheDir, "main.*")) {
-                    for (Path p : ds) {
-                        String ext = extFromNameOrUrl(p.getFileName().toString());
-                        if (!allowed().contains(ext)) continue;
-                        Path dst = productDir.resolve(nextFileName(0, ext)); // 무조건 0번으로
-                        Files.move(p, dst, StandardCopyOption.REPLACE_EXISTING);
-                        finalUrls.add(urlJoin(props.getPublicBaseUrl(), "products", String.valueOf(productId), dst.getFileName().toString()));
-                        break;
-                    }
+                    for (Path p : ds) { cacheMain = p; break; } // 하나만
                 }
             }
         }
 
-        // 2) 나머지 imageUrls 저장 (1부터 순번)
-        int fileOrdinal = 1;
-        if (imageUrls != null) {
-            for (String u : imageUrls) {
-                if (u == null || u.isBlank()) continue;
-
-                // 캐시 main URL을 그대로 넣어왔으면 중복 스킵
-                if (finalUrls.stream().anyMatch(u::equals)) continue;
-
-                String ext = extFromNameOrUrl(u);
+        // --- 업로드 이미지 유효성 검사 ---
+        List<MultipartFile> safeImages = new ArrayList<>();
+        if (images != null) {
+            for (MultipartFile mf : images) {
+                if (mf == null || mf.isEmpty()) continue;
+                String ext = extFromNameOrUrl(mf.getOriginalFilename());
                 if (!allowed().contains(ext)) continue;
-
-                Path dst = productDir.resolve(nextFileName(fileOrdinal++, ext));
-
-                if (u.startsWith(props.getPublicBaseUrl())) {
-                    String relative = u.substring(props.getPublicBaseUrl().length());
-                    Path src = Path.of(props.getRootDir(), relative);
-                    if (Files.exists(src)) {
-                        Files.copy(src, dst, StandardCopyOption.REPLACE_EXISTING);
-                    } else {
-                        download(u, dst);
-                    }
-                } else {
-                    download(u, dst);
-                }
-                finalUrls.add(urlJoin(props.getPublicBaseUrl(), "products", String.valueOf(productId), dst.getFileName().toString()));
+                checkSize(mf.getSize());
+                safeImages.add(mf);
             }
         }
-        return finalUrls;
+
+        // --- 메인 선정: images[mainIndex] 우선, 없으면 cacheMain ---
+        List<Sink> order = new ArrayList<>();
+        boolean mainPicked = false;
+
+        if (!safeImages.isEmpty() && mainIndex != null
+                && mainIndex >= 0 && mainIndex < safeImages.size()) {
+            order.add(Sink.of(safeImages.get(mainIndex)));  // 메인
+            mainPicked = true;
+        } else if (cacheMain != null) {
+            order.add(Sink.of(cacheMain));                  // 메인
+            mainPicked = true;
+        }
+
+        // --- 나머지들 채우기 (중복 제외) ---
+        if (!safeImages.isEmpty()) {
+            for (int i = 0; i < safeImages.size(); i++) {
+                if (mainPicked && mainIndex != null && i == mainIndex) continue; // 이미 0번으로 사용
+                order.add(Sink.of(safeImages.get(i)));
+            }
+        }
+
+        if (cacheMain != null) {
+            // 람다 대신 for-loop로 중복 검사 (effectively final 이슈 회피)
+            boolean exists = false;
+            for (Sink s : order) {
+                if (s.isCacheMain(cacheMain)) { exists = true; break; }
+            }
+            if (!exists) order.add(Sink.of(cacheMain));
+        }
+
+        // --- 디스크 기록 (000부터) ---
+        List<String> urls = new ArrayList<>();
+        for (int i = 0; i < order.size(); i++) {
+            Sink s = order.get(i);
+            String ext = s.ext();
+            Path dst = productDir.resolve(nextFileName(i, ext));
+
+            if (s.multipart != null) {
+                try (InputStream in = s.multipart.getInputStream()) {
+                    Files.copy(in, dst, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } else if (s.cachePath != null) {
+                Files.move(s.cachePath, dst, StandardCopyOption.REPLACE_EXISTING);
+            }
+            urls.add(urlJoin(props.getPublicBaseUrl(), "products", String.valueOf(productId), dst.getFileName().toString()));
+        }
+
+        // --- (선택) 캐시 디렉터리 정리 ---
+        if (analyzeId != null && !analyzeId.isBlank()) {
+            Path cacheDir = Path.of(props.getRootDir(), "cache", analyzeId);
+            try {
+                if (Files.exists(cacheDir)) {
+                    try (DirectoryStream<Path> ds = Files.newDirectoryStream(cacheDir)) {
+                        for (Path p : ds) Files.deleteIfExists(p);
+                    }
+                    Files.deleteIfExists(cacheDir);
+                }
+            } catch (IOException ignore) { /* 청소 실패는 무시 */ }
+        }
+
+        return urls;
     }
 
+    // =========================================
+    // 공용: URL 다운로드 (분석 단계 URL 지원용)
+    // =========================================
     private void download(String urlStr, Path dst) throws IOException {
         URL url = new URL(urlStr);
         HttpURLConnection con = (HttpURLConnection) url.openConnection();
@@ -176,11 +221,9 @@ public class ImageStorageService {
         }
 
         long contentLen = con.getContentLengthLong();
-        if (contentLen > 0) {
-            if (props.getMaxSizeBytes() > 0 && contentLen > props.getMaxSizeBytes()) {
-                con.disconnect();
-                throw new IOException("이미지 용량이 제한을 초과했습니다.");
-            }
+        if (contentLen > 0 && props.getMaxSizeBytes() > 0 && contentLen > props.getMaxSizeBytes()) {
+            con.disconnect();
+            throw new IOException("이미지 용량이 제한을 초과했습니다.");
         }
 
         try (InputStream in = con.getInputStream();
@@ -189,5 +232,20 @@ public class ImageStorageService {
         } finally {
             con.disconnect();
         }
+    }
+
+    // 내부 표현: 업로드 파일 또는 캐시 파일
+    private record Sink(MultipartFile multipart, Path cachePath, String ext) {
+        static Sink of(MultipartFile mf) {
+            String ext = mf != null ? StringUtils.getFilenameExtension(mf.getOriginalFilename()) : null;
+            ext = (ext == null ? "" : ext.toLowerCase(Locale.ROOT));
+            return new Sink(mf, null, ext);
+        }
+        static Sink of(Path cache) {
+            String ext = cache != null ? StringUtils.getFilenameExtension(cache.getFileName().toString()) : null;
+            ext = (ext == null ? "" : ext.toLowerCase(Locale.ROOT));
+            return new Sink(null, cache, ext);
+        }
+        boolean isCacheMain(Path p) { return cachePath != null && cachePath.equals(p); }
     }
 }

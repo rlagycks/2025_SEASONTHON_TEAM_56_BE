@@ -33,15 +33,13 @@ public class ProductCreateRequest {
     @Digits(integer = 10, fraction = 2, message = "가격 형식이 올바르지 않습니다.")
     private BigDecimal price;
 
-    private List<@NotBlank(message = "키워드는 공백일 수 없습니다.") String> keywords;
+    private List<@NotBlank String> keywords;
 
     @JsonProperty("analyze_id")
     @JsonAlias({"analyzeId"})
     private String analyzeId; // nullable
 
-    @JsonProperty("image_urls")
-    private List<String> imageUrls; // 등록 시 전체 이미지 URL들(캐시/외부 혼합 가능)
-
     @JsonProperty("main_index")
-    private Integer mainIndex; // 기본 0
+    @JsonAlias({"mainIndex"})
+    private Integer mainIndex; // nullable -> 서비스에서 기본 0 처리
 }
