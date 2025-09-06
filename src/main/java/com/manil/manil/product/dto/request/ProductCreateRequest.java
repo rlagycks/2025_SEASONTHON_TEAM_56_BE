@@ -1,7 +1,7 @@
+// src/main/java/com/manil/manil/product/dto/request/ProductCreateRequest.java
 package com.manil.manil.product.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
-import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
@@ -11,21 +11,18 @@ import java.math.BigDecimal;
 import java.util.List;
 
 @Getter @Setter
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ProductCreateRequest {
 
     @NotBlank(message = "상품명은 필수입니다.")
     private String name;
 
-    @JsonProperty("simple_description")              // 기본 키 이름(응답 시에도 이 이름으로 나감)
-    @JsonAlias({"simpleDescription"})                // 요청에서 카멜케이스도 허용
-    @Size(max = 2000, message = "간단 설명은 2000자 이하이어야 합니다.")
+    @JsonProperty("simple_description")
+    @JsonAlias({"simpleDescription"})
     private String simpleDescription;
 
     @JsonProperty("detailed_description")
     @JsonAlias({"detailedDescription"})
     @NotBlank(message = "상세 설명은 필수입니다.")
-    @Size(max = 10000, message = "상세 설명은 10000자 이하이어야 합니다.")
     private String detailedDescription;
 
     @NotBlank(message = "카테고리는 필수입니다.")
@@ -41,4 +38,10 @@ public class ProductCreateRequest {
     @JsonProperty("analyze_id")
     @JsonAlias({"analyzeId"})
     private String analyzeId; // nullable
+
+    @JsonProperty("image_urls")
+    private List<String> imageUrls; // 등록 시 전체 이미지 URL들(캐시/외부 혼합 가능)
+
+    @JsonProperty("main_index")
+    private Integer mainIndex; // 기본 0
 }

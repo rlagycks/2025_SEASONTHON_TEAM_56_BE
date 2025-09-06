@@ -1,11 +1,11 @@
-// com.manil.manil.product.api.ProductController.java
+// src/main/java/com/manil/manil/product/controller/ProductController.java
 package com.manil.manil.product.controller;
 
 import com.manil.manil.global.payload.ResponseDto;
-import com.manil.manil.product.service.ProductService;
 import com.manil.manil.product.dto.request.ProductCreateRequest;
 import com.manil.manil.product.dto.response.ProductCreatedResponse;
 import com.manil.manil.product.dto.response.ProductDetailResponse;
+import com.manil.manil.product.service.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,9 +28,7 @@ public class ProductController {
     ) {
         Long id = productService.create(req);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ResponseDto.of(
-                        ProductCreatedResponse.builder().productId(id).build()
-                ));
+                .body(ResponseDto.of(ProductCreatedResponse.builder().productId(id).build()));
     }
 
     /** 상품 상세 조회 */
