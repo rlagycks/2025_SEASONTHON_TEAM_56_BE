@@ -22,22 +22,28 @@ public class AnalyzeController {
 
     private final AnalyzeService analyzeService;
 
-    /** multipart/form-data: payload(JSON 문자열) + images[] */
-    @PostMapping(value = "/analyze", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ResponseDto<AnalyzeResponse>> analyzeMultipart(
-            @RequestPart("payload") AnalyzeRequest payload,
-            @RequestPart(value = "images", required = false) List<MultipartFile> images
-    ) {
-        var result = analyzeService.analyze(payload, images, true);
+    /** JSON 버전 */
+    @PostMapping(
+            value = "/analyze",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public ResponseEntity<ResponseDto<AnalyzeResponse>> analyzeJson(@RequestBody AnalyzeRequest request) {
+        var result = analyzeService.analyze(request, null, false);
         return ResponseEntity.ok(ResponseDto.of(result));
     }
 
-    /** application/json: body(JSON) + image_urls */
-    @PostMapping(value = "/analyze", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ResponseDto<AnalyzeResponse>> analyzeJson(
-            @RequestBody AnalyzeRequest request
+    /** multipart/form-data 버전 (payload + images[]) */
+    @PostMapping(
+            value = "/analyze",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public ResponseEntity<ResponseDto<AnalyzeResponse>> analyzeMultipart(
+            @RequestPart("payload") AnalyzeRequest payload,
+            @RequestPart(name = "images", required = false) List<MultipartFile> images
     ) {
-        var result = analyzeService.analyze(request, null, false);
+        var result = analyzeService.analyze(payload, images, true);
         return ResponseEntity.ok(ResponseDto.of(result));
     }
 }
