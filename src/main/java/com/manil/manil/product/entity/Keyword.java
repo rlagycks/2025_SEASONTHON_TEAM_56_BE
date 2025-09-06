@@ -3,7 +3,7 @@ package com.manil.manil.product.entity;
 import com.manil.manil.product.entity.Product;
 import jakarta.persistence.*;
 import lombok.*;
-import org.springframework.data.annotation.Id;
+import jakarta.persistence.Id;
 
 @Entity
 @Table(name="keywords")

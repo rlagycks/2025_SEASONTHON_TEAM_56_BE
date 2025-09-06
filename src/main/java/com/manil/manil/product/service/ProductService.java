@@ -9,10 +9,7 @@ import com.manil.manil.product.entity.AnalyzeCache;
 import com.manil.manil.product.entity.Embedding;
 import com.manil.manil.product.entity.Product;
 import com.manil.manil.product.entity.ProductImage;
-import com.manil.manil.product.repository.AbstractTagRepository;
-import com.manil.manil.product.repository.AnalyzeCacheRepository;
-import com.manil.manil.product.repository.EmbeddingRepository;
-import com.manil.manil.product.repository.ProductRepository;
+import com.manil.manil.product.repository.*;
 import com.pgvector.PGvector;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -34,6 +31,8 @@ public class ProductService {
     private final AbstractTagRepository abstractTagRepository;
     private final AnalyzeCacheRepository analyzeCacheRepository;
     private final EmbeddingClient embeddingClient;
+    private final KeywordRepository keywordRepository;
+    private final ProductFiltersRepository productFiltersRepository;
 
     @Transactional
     public Long create(ProductCreateRequest req, List<MultipartFile> images) {
@@ -70,7 +69,7 @@ public class ProductService {
             // 이미지 저장 실패는 본문 저장과 분리 (로그만 남기고 계속)
         }
 
-        upsertEmbeddingAndTags(p, req.getAnalyzeId());
+        upsertEmbeddingTagsFiltersAndKeywords(p, req.getAnalyzeId(), req.getKeywords());
 
         return p.getId();
     }
@@ -104,51 +103,67 @@ public class ProductService {
                 .build();
     }
 
-    private void upsertEmbeddingAndTags(Product p, String analyzeId) {
+    private void upsertEmbeddingTagsFiltersAndKeywords(Product p, String analyzeId, List<String> reqKeywords) {
         AnalyzeCache cache = null;
         if (analyzeId != null && !analyzeId.isBlank()) {
             try {
                 cache = analyzeCacheRepository.findById(UUID.fromString(analyzeId)).orElse(null);
-            } catch (IllegalArgumentException ignore) {
-                // 잘못된 UUID 형식이면 캐시 미사용
-            }
+            } catch (IllegalArgumentException ignore) { }
         }
 
         // ---- 임베딩 업서트 ----
         String vecText = null;
-
-        // 1) 캐시가 있으면 캐시 임베딩 문자열 우선 사용
         if (cache != null && cache.getEmbeddingText() != null && !cache.getEmbeddingText().isBlank()) {
             vecText = cache.getEmbeddingText();
         }
-
-        // 2) 없으면 상세설명으로 즉시 생성
         if (vecText == null && p.getDetailedDescription() != null && !p.getDetailedDescription().isBlank()) {
             float[] v = embeddingClient.embed(p.getDetailedDescription().strip());
             if (v != null && v.length == 768) {
                 vecText = new PGvector(v).toString();
             }
         }
-
         if (vecText != null) {
-            // 이미 있으면 수정, 없으면 생성
-            Optional<Embedding> existing = embeddingRepository.findByProduct_Id(p.getId());
-            Embedding emb = existing.orElseGet(() -> Embedding.builder().product(p).build());
-            emb.setDescriptionEmbeddingText(vecText); // ColumnTransformer가 write 시 ::vector 적용
+            var existing = embeddingRepository.findByProduct_Id(p.getId());
+            var emb = existing.orElseGet(() -> Embedding.builder().product(p).build());
+            emb.setDescriptionEmbeddingText(vecText);
             embeddingRepository.save(emb);
         }
 
-        // ---- 추상 태그 업서트 ----
+        // ---- 추상 태그 업서트 (cache 기반) ----
         if (cache != null && cache.getAbstractTags() != null && cache.getAbstractTags().length > 0) {
-            // 단순화: 모두 지우고 다시 삽입
             abstractTagRepository.deleteByProductId(p.getId());
             for (String tag : cache.getAbstractTags()) {
                 if (tag == null || tag.isBlank()) continue;
-                AbstractTag t = AbstractTag.builder()
-                        .product(p)
-                        .tag(tag.trim())
-                        .build();
-                abstractTagRepository.save(t);
+                abstractTagRepository.save(
+                        AbstractTag.builder().product(p).tag(tag.trim()).build()
+                );
+            }
+        }
+
+        // ---- 필터 업서트 (cache 기반) ----
+        if (cache != null) {
+            productFiltersRepository.deleteByProductId(p.getId());
+            var pf = com.manil.manil.product.entity.ProductFilters.builder()
+                    .product(p)
+                    .ingredients(cache.getIngredients())
+                    .regions(cache.getRegions())
+                    .ageGroups(cache.getAgeGroups())
+                    .build();
+            productFiltersRepository.save(pf);
+        }
+
+        // ---- 키워드 업서트 (요청 본문 기반) ----
+        keywordRepository.deleteByProductId(p.getId());
+        if (reqKeywords != null && !reqKeywords.isEmpty()) {
+            for (String kw : reqKeywords) {
+                if (kw == null || kw.isBlank()) continue;
+                keywordRepository.save(
+                        com.manil.manil.product.entity.Keyword.builder()
+                                .product(p)
+                                .keyword(kw.trim())
+                                .type("request")   // 구분 필드 사용 중이니 표시
+                                .build()
+                );
             }
         }
     }
