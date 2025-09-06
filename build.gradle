@@ -32,6 +32,7 @@ dependencies {
     implementation 'org.postgresql:postgresql'
     implementation 'com.pgvector:pgvector:0.1.4'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
 
     // Google GenAI
     implementation 'com.google.genai:google-genai:1.15.0'
