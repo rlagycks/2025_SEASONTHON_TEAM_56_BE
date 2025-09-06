@@ -31,10 +31,10 @@ management:
 
 manil:
   gemini:
-    api-key: ${GEMINI_API_KEY}     # 반드시 ENV로 주입
+    api-key: ${GEMINI_API_KEY}
     base-url: https://generativelanguage.googleapis.com
-    embed-model: text-embedding-004
-    generate-model: gemini-embedding-001
+    embed-model: gemini-embedding-001
+    generate-model: gemini-2.5-flash-lite
     dim: 768
     connect-timeout-ms: 3000
     read-timeout-ms: 8000
