@@ -17,7 +17,7 @@ public final class InputHash {
                 "|keywords=" + normKeywords(keywords) +
                 "|category=" + norm(category) +
                 "|price=" + normPrice(price) +
-                "|model=" + safe(modelName);   // ✅ promptVersion 제외
+                "|model=" + safe(modelName);
         return sha256(canonical);
     }
 

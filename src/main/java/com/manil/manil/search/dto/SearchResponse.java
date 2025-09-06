@@ -2,6 +2,7 @@
 package com.manil.manil.search.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 
 import java.math.BigDecimal;
@@ -16,9 +17,10 @@ public record SearchResponse(
     public record ProductHit(
             Long id,
             String name,
-            String description,  // simple_description 또는 상세 요약(서비스 규칙에 맞게)
+            String description,   // simple_description 요약 등
             BigDecimal price,
             String category,
-            Double similarity
+            Double similarity,
+            @JsonProperty("main_image_url") String mainImageUrl  // ← 추가
     ) { }
 }
