@@ -54,9 +54,18 @@ manil:
     connect-timeout-ms: 3000
     read-timeout-ms: 8000
   search:
-    repo-top-k: 80
-    response-top-k: 3
-    keyword-boost: 0.02
+    repo-top-k: 200
+    result-top-n: 3
+    weights:
+      embedding: 0.55
+      keywords: 0.15
+      abstract-tags: 0.15
+      filters: 0.10
+      price: 0.05
+    price:
+        sigma: 10000
+    penalties:
+      category-mismatch: 0.05
 
 logging:
   level:
