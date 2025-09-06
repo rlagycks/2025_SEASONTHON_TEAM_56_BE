@@ -17,10 +17,10 @@ public record SearchResponse(
     public record ProductHit(
             Long id,
             String name,
-            String description,   // simple_description 요약 등
+            String description,
             BigDecimal price,
             String category,
             Double similarity,
-            @JsonProperty("main_image_url") String mainImageUrl  // ← 추가
+            @JsonProperty("main_image_url") String mainImageUrl
     ) { }
 }
