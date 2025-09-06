@@ -78,7 +78,7 @@ public class SearchService {
                     }
 
                     String mainUrl = productImageRepository
-                            .findTopByProductIdOrderByMainDescSortOrderAscIdAsc(r.getId())
+                            .findTopByProduct_IdOrderByMainDescSortOrderAscIdAsc(r.getId())
                             .map(ProductImage::getUrl)
                             .orElse(null);
 
