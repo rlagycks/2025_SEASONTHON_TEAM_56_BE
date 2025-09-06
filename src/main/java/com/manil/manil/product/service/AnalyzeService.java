@@ -38,12 +38,6 @@ public class AnalyzeService {
     @Value("${manil.analyze.cache-ttl-hours:24}")
     private long cacheTtlHours;
 
-    /**
-     * 단일 엔트리포인트:
-     * - multipart의 경우 images(여러장 가능) 중 0번만 캐시에 저장
-     * - json의 경우 image_urls(여러개 가능) 중 0번만 서버가 받아 캐시에 저장
-     * - 텍스트 입력은 LLM 호출/캐시/임베딩 로직 유지
-     */
     @Transactional
     public AnalyzeResponse analyze(AnalyzeRequest req,
                                    List<MultipartFile> multipartImages,
