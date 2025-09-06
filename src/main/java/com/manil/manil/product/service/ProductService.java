@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Comparator;  // ← 추가
 import java.util.List;
 
 @Service
@@ -63,6 +64,18 @@ public class ProductService {
         Product p = productRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("상품을 찾을 수 없습니다."));
 
+        // DTO에 필요한 이미지 매핑 (sort_order ASC, 같은 값이면 id ASC)
+        var images = p.getImages().stream()
+                .sorted(Comparator
+                        .comparingInt(ProductImage::getSortOrder)
+                        .thenComparing(ProductImage::getId))
+                .map(i -> ProductDetailResponse.ImageDto.builder()
+                        .url(i.getUrl())
+                        .isMain(i.isMain())
+                        .sortOrder(i.getSortOrder())
+                        .build())
+                .toList();
+
         return ProductDetailResponse.builder()
                 .id(p.getId())
                 .name(p.getName())
@@ -70,7 +83,8 @@ public class ProductService {
                 .detailedDescription(p.getDetailedDescription())
                 .category(p.getCategory())
                 .price(p.getPrice())
-                .keywords(null)
+                .keywords(null)     // 필요 시 별도 매핑
+                .images(images)     // ← 추가
                 .build();
     }
 }

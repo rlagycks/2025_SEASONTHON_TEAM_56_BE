@@ -3,7 +3,9 @@ package com.manil.manil.search.service;
 
 import com.manil.manil.gemini.client.EmbeddingClient;
 import com.manil.manil.product.entity.Keyword;
+import com.manil.manil.product.entity.ProductImage;
 import com.manil.manil.product.repository.KeywordRepository;
+import com.manil.manil.product.repository.ProductImageRepository;
 import com.manil.manil.search.dto.SearchResponse;
 import com.manil.manil.search.filter.HardFilter;
 import com.manil.manil.search.filter.HardFilterParser;
@@ -22,8 +24,9 @@ import java.util.stream.Collectors;
 public class SearchService {
 
     private final EmbeddingClient embeddingClient;
-    private final SearchRepository searchRepository; // ← 필드명 소문자
+    private final SearchRepository searchRepository;
     private final KeywordRepository keywordRepository;
+    private final ProductImageRepository productImageRepository;
 
     @Value("${manil.search.top-k:3}")
     private int topK;
@@ -66,15 +69,12 @@ public class SearchService {
         final List<SearchResponse.ProductHit> hits = rows.stream()
                 .map(r -> {
                     double sim = r.getSimilarity() == null ? 0.0 : r.getSimilarity();
-                    if (!reqKeywords.isEmpty()) {
-                        final List<String> kws = productKeywords.getOrDefault(r.getId(), List.of());
-                        final long matches = kws.stream()
-                                .filter(Objects::nonNull)
-                                .map(String::toLowerCase)
-                                .filter(reqKeywords::contains)
-                                .count();
-                        sim += matches * keywordBoost;
-                    }
+
+                    String mainUrl = productImageRepository
+                            .findTopByProductIdOrderByMainDescSortOrderAscIdAsc(r.getId())
+                            .map(ProductImage::getUrl)
+                            .orElse(null);
+
                     return SearchResponse.ProductHit.builder()
                             .id(r.getId())
                             .name(r.getName())
@@ -82,9 +82,9 @@ public class SearchService {
                             .price(r.getPrice())
                             .category(r.getCategory())
                             .similarity(sim)
+                            .mainImageUrl(mainUrl) // ← 추가
                             .build();
                 })
-                // 부스트 반영 후 재정렬
                 .sorted(Comparator.comparing(
                         SearchResponse.ProductHit::similarity,
                         Comparator.nullsLast(Comparator.reverseOrder())
