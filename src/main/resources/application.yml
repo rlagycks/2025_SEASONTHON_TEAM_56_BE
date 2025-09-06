@@ -2,6 +2,12 @@ spring:
   application:
     name: manil
 
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 10MB
+
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -25,9 +31,18 @@ server:
 
 management:
   endpoints:
-    web.exposure.include: "health,info"
+    web:
+      exposure:
+        include: "health,info"
   endpoint:
-    health.show-details: never
+    health:
+      show-details: "never"
+
+image:
+  root-dir: /var/www/manil/uploads
+  public-base-url: http://43.201.10.255/images/
+  max-size-bytes: 10485760
+  allowed-extensions: jpg,jpeg,png,webp
 
 manil:
   gemini:
@@ -44,4 +59,3 @@ logging:
     root: INFO
     org.hibernate.SQL: WARN
     org.hibernate.type.descriptor.sql.BasicBinder: WARN
-
