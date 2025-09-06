@@ -25,7 +25,7 @@ public class SearchService {
     private final SearchRepository searchRepository; // ← 필드명 소문자
     private final KeywordRepository keywordRepository;
 
-    @Value("${manil.search.top-k:20}")
+    @Value("${manil.search.top-k:3}")
     private int topK;
 
     @Value("${manil.search.keyword-boost:0.02}")
