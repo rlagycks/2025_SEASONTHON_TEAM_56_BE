@@ -1,0 +1,47 @@
+spring:
+  application:
+    name: manil
+
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      connectionInitSql: "SET search_path TO app, public"
+
+  jpa:
+    show-sql: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        default_schema: app
+        format_sql: true
+        jdbc.time_zone: UTC
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web.exposure.include: "health,info"
+  endpoint:
+    health.show-details: never
+
+manil:
+  gemini:
+    api-key: ${GEMINI_API_KEY}
+    base-url: https://generativelanguage.googleapis.com
+    embed-model: gemini-embedding-001
+    generate-model: gemini-2.5-flash-lite
+    dim: 768
+    connect-timeout-ms: 3000
+    read-timeout-ms: 8000
+
+logging:
+  level:
+    root: INFO
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN
+
