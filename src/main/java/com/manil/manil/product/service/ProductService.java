@@ -53,7 +53,6 @@ public class ProductService {
                 p.getImages().add(pi); // Product.images 가 cascade = ALL 이면 save 불필요
             }
         } catch (Exception e) {
-            // TODO: 로깅 권장 (이미지 저장 실패 시 정책에 따라 무시/롤백)
         }
 
         return p.getId();
@@ -71,7 +70,7 @@ public class ProductService {
                 .detailedDescription(p.getDetailedDescription())
                 .category(p.getCategory())
                 .price(p.getPrice())
-                .keywords(null) // 필요 시 별도 테이블/쿼리로 조회
+                .keywords(null)
                 .build();
     }
 }
